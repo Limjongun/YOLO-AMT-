@@ -1,0 +1,7 @@
+# Ablation: Fixed Resolution (640x640) — no Adaptive Resolution Router
+_base_: ../amt_yolo_base.yaml
+model:
+  adaptive_resolution: false
+  resolutions: [640]         # Single fixed resolution
+logging:
+  run_name: ablation_fixed_resolution

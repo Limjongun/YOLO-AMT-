@@ -1,0 +1,80 @@
+REASONING DOCUMENT Adaptive Memory Trajectory YOLO (AMT-YOLO)
+
+AMT-YOLO dikembangkan dengan tujuan mengatasi beberapa keterbatasan
+utama pada arsitektur YOLO konvensional ketika diterapkan pada analisis
+video secara real-time. Meskipun YOLO memiliki kecepatan inferensi yang
+sangat tinggi, model ini pada dasarnya memproses setiap frame secara
+independen sehingga tidak memanfaatkan hubungan temporal antarframe.
+Selain itu, YOLO menggunakan resolusi input yang tetap untuk semua
+kondisi, sehingga sering kali kurang efisien pada scene sederhana dan
+kurang optimal untuk mendeteksi objek kecil pada scene yang kompleks.
+Berdasarkan permasalahan tersebut, AMT-YOLO mengintegrasikan tiga
+pengembangan utama, yaitu Adaptive Resolution, Temporal Memory Module,
+dan Trajectory Prediction Head, yang dirancang agar saling melengkapi
+dengan tetap menjaga karakteristik real-time.
+
+Adaptive Resolution dikembangkan untuk mengatasi penggunaan komputasi
+yang tidak efisien akibat resolusi input yang bersifat statis. Pada YOLO
+konvensional, semua gambar diproses menggunakan resolusi yang sama
+meskipun tingkat kompleksitas scene dapat sangat berbeda. Pendekatan ini
+menyebabkan pemborosan komputasi pada scene sederhana dan berpotensi
+kehilangan detail penting pada objek berukuran kecil. Oleh karena itu,
+AMT-YOLO menambahkan sebuah Adaptive Resolution Router yang menganalisis
+kompleksitas frame sebelum proses inferensi. Frame dengan sedikit objek
+atau objek berukuran besar diproses menggunakan resolusi lebih rendah
+sehingga meningkatkan frame per second (FPS) dan mengurangi beban GPU.
+Sebaliknya, apabila ditemukan banyak objek kecil atau scene yang padat,
+sistem akan memilih resolusi yang lebih tinggi untuk mempertahankan
+akurasi deteksi. Pendekatan ini diharapkan menghasilkan keseimbangan
+yang lebih baik antara kecepatan dan kualitas deteksi dibandingkan
+penggunaan resolusi tetap.
+
+Temporal Memory Module ditambahkan untuk mengatasi kelemahan YOLO yang
+hanya memanfaatkan informasi dari satu frame. Dalam berbagai aplikasi
+seperti CCTV, kendaraan otonom, maupun pemantauan lalu lintas, objek
+sering mengalami occlusion, keluar masuk bidang pandang kamera, atau
+mengalami perubahan posisi yang cepat. Ketika setiap frame diperlakukan
+sebagai gambar yang berdiri sendiri, model lebih rentan menghasilkan
+deteksi yang tidak stabil, identitas objek yang berubah, maupun fenomena
+flickering. Modul memori memungkinkan fitur penting dari frame
+sebelumnya disimpan dan digunakan kembali ketika memproses frame
+berikutnya. Dengan adanya konteks temporal tersebut, model memiliki
+kemampuan yang lebih baik dalam mempertahankan identitas objek,
+memperkirakan posisi objek yang sempat tertutup, serta menghasilkan
+deteksi yang lebih konsisten sepanjang video. Pengembangan ini juga
+membuka peluang untuk meningkatkan performa tracking tanpa menambahkan
+biaya komputasi yang terlalu besar apabila menggunakan implementasi
+ringan seperti ConvGRU atau Memory Bank.
+
+Trajectory Prediction Head merupakan pengembangan yang bertujuan
+mengubah sistem dari sekadar mendeteksi kondisi saat ini menjadi mampu
+melakukan prediksi terhadap pergerakan objek pada beberapa frame
+berikutnya. Pada arsitektur YOLO standar, keluaran model hanya berupa
+bounding box, kelas objek, dan tingkat kepercayaan sehingga seluruh
+analisis bersifat reaktif. Dalam banyak aplikasi nyata, kemampuan
+memprediksi lintasan memiliki nilai yang sangat penting, misalnya untuk
+mengantisipasi potensi tabrakan kendaraan, memonitor perilaku pejalan
+kaki, atau melakukan analisis aktivitas pada sistem pengawasan. Oleh
+karena itu, AMT-YOLO menambahkan sebuah Trajectory Prediction Head yang
+memanfaatkan embedding objek saat ini bersama informasi yang tersimpan
+pada modul memori untuk memperkirakan posisi objek di masa depan.
+Keluaran tambahan ini dapat berupa titik pusat, bounding box prediksi,
+maupun motion vector dalam beberapa horizon waktu. Dengan demikian,
+sistem tidak hanya memberikan informasi mengenai keberadaan objek,
+tetapi juga menyediakan estimasi arah dan pola pergerakan yang dapat
+dimanfaatkan oleh modul pengambilan keputusan pada sistem yang lebih
+besar.
+
+Ketiga pengembangan tersebut dirancang agar saling mendukung dalam satu
+alur inferensi. Adaptive Resolution berfokus pada efisiensi komputasi
+sejak awal proses, sehingga sumber daya hanya digunakan ketika
+diperlukan. Temporal Memory Module meningkatkan kualitas representasi
+fitur dengan memanfaatkan hubungan temporal antarframe, sedangkan
+Trajectory Prediction Head memperluas fungsi deteksi menjadi sistem yang
+mampu melakukan prediksi. Kombinasi ketiga modul ini diharapkan mampu
+meningkatkan akurasi, stabilitas deteksi, kualitas tracking, serta
+kemampuan analisis perilaku objek tanpa menghilangkan keunggulan utama
+YOLO sebagai model deteksi objek yang cepat. Dengan demikian, AMT-YOLO
+menawarkan arah pengembangan yang relevan untuk aplikasi video cerdas
+yang membutuhkan keseimbangan antara performa, efisiensi, dan kemampuan
+prediktif.

@@ -1,0 +1,8 @@
+# Ablation: No Temporal Memory — pure detection + trajectory
+_base_: ../amt_yolo_base.yaml
+model:
+  memory_type: none
+loss:
+  tracking_weight: 0.0
+logging:
+  run_name: ablation_no_memory

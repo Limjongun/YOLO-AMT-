@@ -1,0 +1,6 @@
+# Ablation: ConvLSTM only (no ConvGRU)
+_base_: ../amt_yolo_base.yaml
+model:
+  memory_type: convlstm
+logging:
+  run_name: ablation_convlstm

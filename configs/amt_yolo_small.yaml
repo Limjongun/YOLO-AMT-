@@ -1,0 +1,25 @@
+# ============================================================
+# AMT-YOLO Small Configuration — Minimal VRAM (RTX 4050 6GB)
+# Use this for quick experiments and debugging
+# ============================================================
+
+# Inherit base config and override:
+_base_: amt_yolo_base.yaml
+
+model:
+  backbone: yolov8n          # Nano — fastest, least memory
+  memory_type: convgru       # ConvGRU is lighter than ConvLSTM
+  trajectory_horizon: 3      # Shorter horizon to save memory
+  resolutions: [416, 640]    # Smaller resolutions
+
+training:
+  batch_size: 8              # Can increase with nano backbone
+  accumulate_grad_batches: 2  # Effective batch = 16
+  amp: true
+  gradient_checkpointing: false  # Not needed for nano
+
+loss:
+  trajectory_weight: 0.2
+
+logging:
+  run_name: small_debug

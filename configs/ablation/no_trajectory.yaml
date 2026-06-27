@@ -1,0 +1,8 @@
+# Ablation: No Trajectory Prediction Head
+_base_: ../amt_yolo_base.yaml
+model:
+  trajectory_horizon: 0      # 0 = disabled
+loss:
+  trajectory_weight: 0.0
+logging:
+  run_name: ablation_no_trajectory

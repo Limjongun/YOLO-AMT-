@@ -1,0 +1,81 @@
+# ============================================================
+# AMT-YOLO Base Configuration
+# Hardware: RTX 4050 6GB VRAM
+# ============================================================
+
+# --- Model ---
+model:
+  backbone: yolov8s          # yolov8n (fastest) | yolov8s | yolov8m
+  pretrained: true           # Load COCO pretrained weights
+  memory_type: convgru       # convgru | convlstm
+  trajectory_horizon: 5      # 5 to 10 frames ahead
+  adaptive_resolution: true
+  resolutions: [640, 768]    # Training max 768 for 6GB VRAM
+
+# --- Training ---
+training:
+  epochs: 100
+  batch_size: 4
+  accumulate_grad_batches: 4  # Effective batch = 16
+  learning_rate: 0.001
+  weight_decay: 0.0005
+  amp: true                   # Automatic Mixed Precision (FP16) — REQUIRED for 6GB
+  gradient_checkpointing: true
+  workers: 4
+  seed: 42
+
+  # Multi-stage training
+  stages:
+    detection:
+      epochs: 50
+      freeze_neck: true
+      dataset: coco
+    full:
+      epochs: 50
+      freeze_neck: false
+      dataset: mot17
+
+# --- Loss Weights ---
+loss:
+  detection_weight: 1.0
+  tracking_weight: 0.5
+  trajectory_weight: 0.3
+  iou_type: ciou             # ciou | diou | giou
+
+# --- Data ---
+data:
+  root: data/
+  coco_path: data/coco/
+  mot17_path: data/mot17/
+  visdrone_path: data/visdrone/
+  sequence_length: 8         # Frames per training sequence
+  image_size: 640            # Default training resolution
+
+# --- Augmentation ---
+augmentation:
+  mosaic: true
+  mixup: false               # Disable for temporal consistency
+  flip_lr: true
+  color_jitter: true
+  temporal_consistent: true  # Apply same augment to all frames in sequence
+
+# --- Logging ---
+logging:
+  backend: wandb             # wandb | tensorboard
+  project: amt-yolo
+  run_name: base_convgru
+  log_every_n_steps: 10
+  save_checkpoint_every: 10
+
+# --- Evaluation ---
+evaluation:
+  conf_threshold: 0.25
+  iou_threshold: 0.45
+  max_det: 300
+  trajectory_eval_horizon: [1, 3, 5]  # Evaluate at t+1, t+3, t+5
+
+# --- Paths ---
+paths:
+  checkpoints: experiments/checkpoints/
+  logs: experiments/logs/
+  results: experiments/results/
