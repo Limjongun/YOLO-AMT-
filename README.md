@@ -67,6 +67,6 @@ python verify_setup.py
 
 
 
-Penelitian ini ditargetkan untuk publikasi ilmiah (target konferensi: CVPR). Evaluasi model dan *ablation study* akan dilakukan menggunakan dataset COCO (pra-pelatihan deteksi), MOT17 (pelatihan temporal dan tracking), serta VisDrone (evaluasi deteksi objek udara skala kecil). 
 
-Kami menyambut kolaborasi, laporan kutu (bug report), dan kontribusi kode melalui platform GitHub.
+
+Kami menyambut kolaborasi, laporan (bug report), dan kontribusi kode melalui platform GitHub.
