@@ -21,18 +21,20 @@ training:
   weight_decay: 0.0005
   amp: true                   # Automatic Mixed Precision (FP16) — REQUIRED for 6GB
   gradient_checkpointing: true
-  workers: 4
+  workers: 0                  # Set to 0 to prevent Windows Multiprocessing MemoryError
   seed: 42
 
-  # Multi-stage training
+  # Multi-stage training (Neck Warmup Trick — No COCO needed)
   stages:
-    detection:
-      epochs: 50
-      freeze_neck: true
-      dataset: coco
+    warmup:
+      epochs: 10
+      freeze_backbone: true
+      freeze_head: true
+      dataset: mot17
     full:
-      epochs: 50
-      freeze_neck: false
+      epochs: 90
+      freeze_backbone: false
+      freeze_head: false
       dataset: mot17
 
 # --- Loss Weights ---
@@ -44,11 +46,10 @@ loss:
 
 # --- Data ---
 data:
-  root: data/
-  coco_path: data/coco/
-  mot17_path: data/mot17/
-  visdrone_path: data/visdrone/
-  sequence_length: 8         # Frames per training sequence
+  root: D:/YOLO next/datasets/
+  mot17_path: D:/YOLO next/datasets/MOT17
+  visdrone_path: D:/YOLO next/datasets/VisDrone
+  sequence_length: 5         # Frames per training sequence (5 for 6GB VRAM)
   image_size: 640            # Default training resolution
 
 # --- Augmentation ---

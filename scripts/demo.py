@@ -37,7 +37,7 @@ def parse_args():
     parser.add_argument("--weights", default=None, help="Path to model weights (.pt)")
     parser.add_argument("--show-trajectory", action="store_true", help="Overlay trajectory predictions")
     parser.add_argument("--benchmark", action="store_true", help="Benchmark FPS only")
-    parser.add_argument("--conf", type=float, default=0.25, help="Confidence threshold")
+    parser.add_argument("--conf", type=float, default=0.05, help="Confidence threshold")
     parser.add_argument("--save", type=str, default=None, help="Save output to video file")
     parser.add_argument("--device", default="auto")
     return parser.parse_args()
@@ -131,14 +131,73 @@ def run_demo(args):
         tensor = torch.from_numpy(rgb).float().permute(2, 0, 1).unsqueeze(0) / 255.0
         tensor = tensor.to(device)
 
-        # Inference
+        # Inference Step 1: Detect objects and extract memory/embeddings
         with torch.no_grad():
-            with torch.cuda.amp.autocast(enabled=(device == "cuda")):
-                results = model(tensor)
+            with torch.amp.autocast('cuda', enabled=(device == "cuda")):
+                results = model(tensor, return_trajectory=False)
+                
+                # Apply NMS (Ultralytics standard output)
+                from ultralytics.utils.nms import non_max_suppression
+                preds = non_max_suppression(results["detections"], conf_thres=args.conf, iou_thres=0.45)
+                
+                det = preds[0] # batch size 1
+                
+                # Inference Step 2: Predict trajectories for detected objects
+                if args.show_trajectory and len(det) > 0 and model.trajectory_head is not None:
+                    # det format: [x1, y1, x2, y2, conf, cls] at internal resolution
+                    boxes = det[:, :4].clone()
+                    h_img, w_img = frame.shape[:2]
+                    resolution = results.get("resolution", 640)
+                    
+                    # Scale boxes back to original image size
+                    ratio_x = w_img / resolution
+                    ratio_y = h_img / resolution
+                    boxes[:, [0, 2]] *= ratio_x
+                    boxes[:, [1, 3]] *= ratio_y
+                    
+                    # Update det with scaled boxes for drawing later
+                    det[:, :4] = boxes
+                    
+                    # normalize for trajectory head
+                    boxes[:, [0, 2]] /= w_img
+                    boxes[:, [1, 3]] /= h_img
+                    
+                    # convert to cx, cy, w, h
+                    cx = (boxes[:, 0] + boxes[:, 2]) / 2
+                    cy = (boxes[:, 1] + boxes[:, 3]) / 2
+                    w = boxes[:, 2] - boxes[:, 0]
+                    h = boxes[:, 3] - boxes[:, 1]
+                    current_boxes = torch.stack([cx, cy, w, h], dim=1)
+                    
+                    # Query Trajectory Head
+                    batch_idx = torch.zeros(len(current_boxes), dtype=torch.long, device=device)
+                    obj_embed = results["embeddings"][batch_idx]
+                    
+                    traj_out = model.trajectory_head(
+                        obj_embed=obj_embed,
+                        mem_embed=obj_embed,
+                        current_boxes=current_boxes
+                    )
+                    
+                    future_boxes = traj_out["future_boxes"].cpu().numpy() # [N, Horizon, 4]
+                    confidences = traj_out["confidences"].cpu().numpy()
+                else:
+                    future_boxes = None
 
         t1 = time.perf_counter()
         fps = 1.0 / (t1 - t0)
         fps_history.append(fps)
+
+        # Draw Bounding Boxes
+        if len(det) > 0:
+            for i, d in enumerate(det):
+                x1, y1, x2, y2, conf, cls = d.cpu().numpy()
+                cv2.rectangle(frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
+                
+                # Draw trajectory if available
+                if future_boxes is not None:
+                    traj_boxes = future_boxes[i]
+                    frame = draw_trajectory(frame, traj_boxes, color=(0, 255, 255))
 
         # Draw FPS + resolution info
         avg_fps = sum(fps_history[-30:]) / min(len(fps_history), 30)

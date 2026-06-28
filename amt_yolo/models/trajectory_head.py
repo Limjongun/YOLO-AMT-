@@ -81,12 +81,11 @@ class TrajectoryDecoder(nn.Module):
             nn.Linear(64, 4),  # (cx, cy, w, h) offsets
         )
 
-        # Confidence head: how confident are we in this future prediction
+        # Confidence head: how confident are we in this future prediction (outputs logits)
         self.conf_head = nn.Sequential(
             nn.Linear(hidden_dim, 32),
             nn.ReLU(inplace=True),
             nn.Linear(32, 1),
-            nn.Sigmoid(),
         )
 
     def forward(
@@ -130,6 +129,10 @@ class TrajectoryDecoder(nn.Module):
             pred_box = prev_box + offset  # [N, 4]
             pred_boxes.append(pred_box)
             pred_offsets.append(offset[:, :2])  # (dx, dy) only for motion vector
+            
+            # Apply sigmoid to confidence during inference to get probabilities
+            if not self.training:
+                conf = torch.sigmoid(conf)
             pred_confs.append(conf)
 
             # Teacher forcing during training

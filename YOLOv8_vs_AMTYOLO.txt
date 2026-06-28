@@ -1,0 +1,116 @@
+================================================================================
+          PERBANDINGAN ARSITEKTUR: YOLOv8 STANDAR vs AMT-YOLO
+================================================================================
+
+1. ARSITEKTUR (STRUKTUR JARINGAN)
+--------------------------------------------------------------------------------
+[ YOLOv8 Standar ]
+Arsitekturnya statis, hanya melihat 1 gambar pada 1 waktu.
+[Input Image] -> [Backbone] -> [Neck (FPN/PAN)] -> [Detection Head] 
+(Output: Kotak Bounding Box & Class)
+
+[ AMT-YOLO (Adaptive Memory Trajectory YOLO) ]
+Arsitekturnya memiliki ingatan (memori) antar-frame dan 2 kepala (Heads).
+[Input Video Frame] 
+    -> [Backbone YOLOv8] 
+    -> [Adaptive Feature Fusion Neck] (Fusi fitur lebih cerdas dengan Atensi)
+    -> [Temporal Memory Module / ConvGRU] (Menggabungkan ingatan masa lalu)
+    -> Cabang 1: [Detection Head] (Posisi saat ini)
+    -> Cabang 2: [Trajectory Head] (Prediksi posisi 5-10 frame ke depan)
+
+
+2. URUTAN PROSES (CARA KERJA)
+--------------------------------------------------------------------------------
+[ YOLOv8 Standar ]
+- Frame 1 masuk -> diproses dari awal -> Keluar Bbox.
+- Frame 2 masuk -> diproses dari awal (melupakan Frame 1) -> Keluar Bbox.
+
+[ AMT-YOLO ]
+- Frame 1 masuk -> Diekstrak fitur -> Keluar Bbox & Menyimpan "Hidden State".
+- Frame 2 masuk -> Diekstrak fitur -> FITUR DIGABUNG DENGAN HIDDEN STATE FRAME 1 
+  -> Keluar Bbox yang lebih akurat + Prediksi arah gerak ke Frame 3,4,5.
+
+
+3. FITUR TAMBAHAN (SUPERPOWER AMT-YOLO)
+--------------------------------------------------------------------------------
+- Future Trajectory: Bisa meramal / menggambar arah pergerakan orang sebelum terjadi.
+- Occlusion Immunity: Tidak hilang saat orang bersembunyi di balik tiang/pohon karena model "ingat" arah jalan orang tersebut.
+- Adaptive Resolution: Jika orang terlalu jauh, sistem otomatis meminta resolusi gambar yang lebih tinggi (zoom).
+
+
+4. TRADE-OFF (HARGA YANG HARUS DIBAYAR)
+--------------------------------------------------------------------------------
+Tentu saja, kekuatan besar datang dengan kompromi:
+
+a. FPS (Kecepatan Deteksi):
+   - YOLOv8 Nano: Sangat ringan, bisa jalan ~120 FPS di GPU RTX 4050.
+   - AMT-YOLO: Ada overhead dari modul ConvGRU. Kecepatannya akan turun sekitar 
+     20% - 30% menjadi sekitar ~80 FPS. (Masih sangat Real-Time untuk video 60 FPS).
+
+b. Penggunaan RAM / VRAM:
+   - YOLOv8: Sangat hemat, VRAM 2GB pun cukup karena cuma simpan 1 gambar.
+   - AMT-YOLO: Butuh menahan "Memori Masa Lalu" di VRAM. Karenanya, butuh VRAM 
+     minimal 6GB (seperti RTX 4050 milikmu) agar tidak Out-of-Memory.
+
+c. Proses Training:
+   - YOLOv8: Cukup acak gambar dan latih.
+   - AMT-YOLO: Sangat rumit karena gambar harus berurutan (sequence). Harus 
+     melakukan Backpropagation through Time (BPTT). Waktu training lebih lama 3x lipat.
+
+================================================================================
+
+5. ARSITEKTUR TEKNIS (DEEP DIVE)
+--------------------------------------------------------------------------------
+
+[ ARSITEKTUR TEKNIS YOLOv8 (Ultralytics) ]
+Input: Image Tensor [B, 3, H, W]
+
+(1) Backbone (Modified CSPDarknet53):
+    - Conv (k=3, s=2)
+    - C2f (CSP Bottleneck with 2 convolutions) modules untuk ekstraksi fitur.
+    - SPPF (Spatial Pyramid Pooling - Fast) di ujung backbone.
+    Output: Fitur skala P3, P4, P5 (Resolusi berbeda untuk objek kecil-besar).
+
+(2) Neck (Path Aggregation Network - PANet):
+    - Menggabungkan fitur P3, P4, P5 secara Top-Down dan Bottom-Up menggunakan 
+      modul C2f dan UpSampling.
+    - Tujuannya agar objek kecil mendapat konteks dari objek besar, dan sebaliknya.
+
+(3) Detection Head (Decoupled Head):
+    - Memecah cabang menjadi dua: 
+        a. Bbox Head (Regresi koordinat kotak)
+        b. Cls Head  (Klasifikasi kelas objek)
+    - Anchor-Free (Menebak langsung ke pusat objek tanpa Anchor box statis).
+
+--------------------------------------------------------------------------------
+
+[ ARSITEKTUR TEKNIS AMT-YOLO ]
+Input: Video Tensor (Sequence) [B, T, 3, H, W] 
+
+(1) Backbone (YOLOv8FeatureExtractor):
+    - Menggunakan persis Backbone YOLOv8 (di-freeze saat tahap awal).
+    - Memproses frame ke-t -> Output: P3[t], P4[t], P5[t].
+
+(2) Adaptive Feature Fusion Neck:
+    - Tidak seperti PANet biasa, di sini kita menambahkan Attention Mechanism.
+    - Menyatukan dan menimbang bobot (weight) fitur P3, P4, P5 sebelum dimasukkan 
+      ke modul memori. Mengurangi dimensi channel agar VRAM tidak habis.
+
+(3) Temporal Memory Module (ConvGRU - Convolutional Gated Recurrent Unit):
+    - Menerima fitur yang sudah digabung di langkah (2).
+    - Memanggil "Hidden State [t-1]" dari memori GPU.
+    - Proses perhitungan gerbang (Gates):
+        * Z_t (Update Gate) = Sigmoid( Conv(Fitur[t] + Hidden[t-1]) )
+        * R_t (Reset Gate)  = Sigmoid( Conv(Fitur[t] + Hidden[t-1]) )
+        * Kandungan Baru    = Tanh( Conv(Fitur[t] + (R_t * Hidden[t-1])) )
+        * Hidden[t] Baru    = (1 - Z_t) * Hidden[t-1]  +  Z_t * Kandungan Baru
+    - Menyimpan memori Hidden[t] yang baru kembali ke VRAM.
+
+(4) Dual Heads (Dua Kepala):
+    - Detection Head: 
+        Menerima memori Hidden[t] -> Regresi Bbox Saat ini + Klasifikasi.
+    - Trajectory Head (Modul Tambahan): 
+        Menerima memori Hidden[t] -> Regresi vektor pergerakan (Velocity) untuk 
+        memprediksi +Delta X dan +Delta Y (posisi orang tersebut di detik berikutnya).
+
+================================================================================
